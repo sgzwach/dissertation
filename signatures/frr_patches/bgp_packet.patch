@@ -1,0 +1,40 @@
+--- frr/bgpd/bgp_packet.c	2025-04-15 11:10:56.073835715 -0500
++++ bgp_packet.c	2025-04-15 10:38:54.896578099 -0500
+@@ -7,6 +7,7 @@
+ 
+ #include <zebra.h>
+ #include <sys/time.h>
++#include <time.h>
+ 
+ #include "frrevent.h"
+ #include "stream.h"
+@@ -50,6 +51,8 @@
+ #include "bgpd/bgp_keepalives.h"
+ #include "bgpd/bgp_flowspec.h"
+ #include "bgpd/bgp_trace.h"
++#include "bgpd/timing.h"
++
+ 
+ DEFINE_HOOK(bgp_packet_dump,
+ 		(struct peer *peer, uint8_t type, bgp_size_t size,
+@@ -4049,6 +4052,10 @@
+ 					__func__, peer->host);
+ 			break;
+ 		case BGP_MSG_UPDATE:
++			/* SGZ Message Type Verified */
++			// get prefix info
++			writeTime("Update Received", peer->host);
++			/* SGZ END Message Type Verified */
+ 			frrtrace(2, frr_bgp, update_process, peer, size);
+ 			atomic_fetch_add_explicit(&peer->update_in, 1,
+ 						  memory_order_relaxed);
+@@ -4059,6 +4066,9 @@
+ 					EC_BGP_UPDATE_RCV,
+ 					"%s: BGP UPDATE receipt failed for peer: %s",
+ 					__func__, peer->host);
++			/* SGZ Update Completed */
++			writeTime("Update Completed", peer->host);
++			/* SGZ END Update Completed */
+ 			break;
+ 		case BGP_MSG_NOTIFY:
+ 			frrtrace(2, frr_bgp, notification_process, peer, size);

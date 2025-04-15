@@ -1,0 +1,32 @@
+log syslog informational
+ipv6 forwarding
+service integrated-vtysh-config
+!
+interface eth0
+    ipv6 address 2001:11:11:11::20/64
+!
+interface eth1
+    ipv6 address 2001:12:12:12::20/64
+!
+router bgp 2000
+ bgp router-id 2.2.2.2
+ no bgp network import-check
+ neighbor 2001:11:11:11::10 remote-as 1000
+ neighbor 2001:12:12:12::30 remote-as 3000
+ !
+ address-family ipv6 unicast
+  network 2001:12:12:12::/64
+  network 2001:11:11:11::/64
+  neighbor 2001:11:11:11::10 activate
+  no neighbor 2001:11:11:11::10 send-community
+  neighbor 2001:11:11:11::10 route-map ALLOW-ALL in
+  neighbor 2001:11:11:11::10 route-map ALLOW-ALL out
+  neighbor 2001:12:12:12::30 activate
+  no neighbor 2001:12:12:12::30 send-community
+  neighbor 2001:12:12:12::30 route-map ALLOW-ALL in
+  neighbor 2001:12:12:12::30 route-map ALLOW-ALL out
+ exit-address-family
+!
+route-map ALLOW-ALL permit 100
+ description Match any
+!

@@ -1,0 +1,5 @@
+# Ignore network capture directories
+cap/
+
+# Do not post key material
+key.txt

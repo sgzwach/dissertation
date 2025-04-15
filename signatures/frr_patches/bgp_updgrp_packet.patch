@@ -1,0 +1,148 @@
+--- frr/bgpd/bgp_updgrp_packet.c	2025-04-15 11:10:56.081835919 -0500
++++ bgp_updgrp_packet.c	2025-04-15 10:38:54.896578099 -0500
+@@ -43,6 +43,18 @@
+ #include "bgpd/bgp_label.h"
+ #include "bgpd/bgp_addpath.h"
+ 
++#include <stdio.h>
++#include <openssl/evp.h>
++#include <openssl/bio.h>
++#include <string.h>
++#include "tc_ipv6_eh.h"
++#include <linux/ipv6.h>
++#include <bpf/bpf.h>
++#include <bpf/bpf_endian.h>
++#include <bpf/libbpf.h>
++// #include "timing.h"
++#include <linux/bpf.h>
++
+ /********************
+  * PRIVATE FUNCTIONS
+  ********************/
+@@ -689,6 +701,9 @@
+ 	addpath_overhead = addpath_capable ? BGP_ADDPATH_ID_LEN : 0;
+ 
+ 	adv = bgp_adv_fifo_first(&subgrp->sync->update);
++	/* SGZ Prepare to advertise */
++	char timingPrefix[PREFIX2STR_BUFFER];
++	/* SGZ END Prepare to advertise*/
+ 	while (adv) {
+ 		const struct prefix *dest_p;
+ 
+@@ -698,7 +713,106 @@
+ 		adj = adv->adj;
+ 		addpath_tx_id = adj->addpath_tx_id;
+ 		path = adv->pathi;
++		/* SGZ Document appended NLRI */
++		prefix2str(dest_p, timingPrefix, sizeof(timingPrefix));
++		writeTime("Adding NLRI to Update", timingPrefix);
++
++		/* Let's get a signature figured out */
++
++		// construct something to sign using the prefix info
++		// unsigned int keysize = sizeof(dest_p->u) + sizeof(dest_p->prefixlen);
++		// unsigned char tmp[keysize] = {};
++		struct prefixinfo pfxinfo = {};
++		// struct prefixinfo *pfxptr = &pfxinfo;
++		// copy the data into the array
++		pfxinfo.prefixlen = dest_p->prefixlen;
++		// pfxinfo.address = dest_p->u;
++		memcpy(pfxinfo.address, &dest_p->u, sizeof(pfxinfo.address));
++		// fprintf(stderr, "pfxinfo len: %u\n", pfxinfo.prefixlen);
++		// for (unsigned int jj = 0; jj < sizeof(pfxinfo.address) / 2; jj++) {
++		// 	fprintf(stderr, "%04x ", pfxinfo.address[jj]);
++		// }
++		// fprintf(stderr,"\n");
++		// for (unsigned int jj = 0; jj < sizeof(pfxinfo); jj++) {
++		// 	fprintf(stderr, "%02x", (int)((char *)&pfxinfo)[jj]);
++		// }
++		// fprintf(stderr,"\n");
++		// for (unsigned in jj = 0; jj < sizeof(dest_p->prefixlen)) {
++		// 	tmp[jj+sizeof(dest_p->u)] = dest_p->prefixlen[jj];
++		// }
++
++		size_t siglen = 0;
++		// EVP_PKEY_CTX *sigctx = EVP_PKEY_CTX_new_from_name(NULL, "ED25519", NULL);
++		BIO *ifp = BIO_new_file("/crypto/key.txt", "r");
++		EVP_PKEY *pkey = EVP_PKEY_new();
++		PEM_read_bio_PrivateKey(ifp, &pkey, 0, NULL);
++		BIO_free(ifp);
++		
++		/* Determine the public key */
++		unsigned char pub[32]; // 256 bits
++		size_t publen = 32;
++		EVP_PKEY_get_raw_public_key(pkey, pub, &publen);
++
++		/* sign the message */
++		EVP_MD_CTX *ctx = EVP_MD_CTX_new();
++		EVP_DigestSignInit(ctx, NULL, NULL, NULL, pkey);
++		EVP_DigestSign(ctx, NULL, &siglen, (unsigned char *) &pfxinfo, sizeof(pfxinfo));
++		unsigned char *sig = OPENSSL_zalloc(siglen); // this could be more efficient; but it's from the docs *shrug*
++		EVP_DigestSign(ctx, sig, &siglen, (unsigned char *) &pfxinfo, sizeof(pfxinfo));
++
++		/* Build the extension header as shown in https://github.com/iurmanj/ebpf-ipv6-exthdr-injection */
++		struct exthdr_t exthdr = {};
++		// writeTime("Initial bytes_len val %d", )
++		// exthdr.bytes_len = 0;
++		void *ptr = &exthdr.bytes[0]; //[exthdr.bytes_len];
++		struct ipv6_opt_hdr *opt = ptr;
++		size_t destlen = 96; // the overall signature/key combination is 96 bytes long, plus two bytes for conf
++		opt->hdrlen = destlen >> 3;
++		opt->nexthdr = 6; // TCP
++		size_t optsize = sizeof(*opt);
++		exthdr.bytes[2] = 0x1e; // 0x1e is an experimental destination option
++		exthdr.bytes[3] = 96; //96 is the actual length of the message
++		__u32 pos = 4; // our new offset into the packet
++
++		/* add the signature */
++		// fprintf(stderr, "Signature: ");
++		for (unsigned int ii = 0; ii < siglen; ii++) {
++			exthdr.bytes[pos+ii] = sig[ii];
++			// fprintf(stderr, "%02x", sig[ii]);
++		}
++		// fprintf(stderr, "\n");
++		/* add the key */
++		// fprintf(stderr, "Key: ");
++		for (unsigned int ii = 0; ii < publen; ii++) {
++			exthdr.bytes[pos+siglen+ii] = pub[ii];
++			// fprintf(stderr, "%02x", pub[ii]);
++		}
++		// fprintf(stderr, "\n");
++
++		/* update length */
++		exthdr.bytes_len = 104;
++
++		/* nexthdr items */
++		exthdr.ip6nexthdr = 60;
++		exthdr.off_last_nexthdr = 96;
++
++		/* Store the header in a hashmap for recall by prefix in eBPF */
++		int fd = bpf_obj_get("/sys/fs/bpf/tc/globals/eh6_map");
++		// writeTime(fd>=0?"Map found!":"Map NOT found :(", "");
++		if (fd >= 0) { // we have our map, add our ext header
++			unsigned int test = 0;
++			int err = bpf_map_update_elem(fd, &test, &exthdr, BPF_ANY); // we should check for error, but we don't
++			if (err) {
++				// fprintf(stderr, "Error updating map: %s\n", strerror(errno));
++			}
++		} else {
++			// fprintf(stderr, "Error opening map: %s\n", strerror(errno));
++		}
++
++		/* Completed */
++
+ 
++		/* SGZ END appended NLRI*/
+ 		space_remaining = STREAM_CONCAT_REMAIN(s, snlri, STREAM_SIZE(s))
+ 				  - BGP_MAX_PACKET_SIZE_OVERFLOW;
+ 		space_needed =
+@@ -904,6 +1018,9 @@
+ 				 - stream_get_getp(packet)),
+ 				peer->max_packet_size, num_pfx);
+ 		pkt = bpacket_queue_add(SUBGRP_PKTQ(subgrp), packet, &vecarr);
++		/* SGZ write time for queueing message */
++		writeTime("Wrote Update to queue", timingPrefix);
++		/* SGZ END write for queueing message*/
+ 		stream_reset(s);
+ 		stream_reset(snlri);
+ 		return pkt;

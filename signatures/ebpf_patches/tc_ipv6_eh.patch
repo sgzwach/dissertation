@@ -1,0 +1,29 @@
+--- ebpf-ipv6-exthdr-injection/tc_ipv6_eh.h	2025-04-15 14:49:39.020189217 -0500
++++ tc_ipv6_eh.h	2025-04-15 14:58:14.713893021 -0500
+@@ -4,7 +4,7 @@
+ #define MAP_NAME	eh6_map
+ 
+ struct exthdr_t {
+-	struct bpf_spin_lock lock;
++	// struct bpf_spin_lock lock;
+ 	__u8 ip6nexthdr;
+ 	__u32 off_last_nexthdr;
+ 	__u32 bytes_len;
+@@ -12,4 +12,15 @@
+ 	__u8 bytes[MAX_BYTES];
+ };
+ 
+-#endif
++struct prefixinfo {
++	uint16_t prefixlen;
++	uint16_t address[8];
++};
++
++struct bgphdr {
++	__u8 marker[16];
++	__u16 length;
++	__u8 type;
++};
++
++#endif
+\ No newline at end of file

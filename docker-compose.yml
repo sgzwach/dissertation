@@ -1,0 +1,80 @@
+
+services:
+  rtr1:
+    hostname: rtr1
+    build: normal/
+    privileged: true
+    container_name: as1000
+    networks:
+      net1:
+        ipv6_address: "2001:11:11:11::10"
+    volumes:
+      - ${PWD}/frr_configs/as1000:/etc/frr/frr.conf:ro
+      - ./cap/as1000:/cap
+    sysctls:
+      net.ipv6.conf.all.forwarding: 1
+
+  rtr1_signed:
+    hostname: rtr1
+    build: signatures/
+    privileged: true
+    container_name: as1000
+    networks:
+      net1:
+        ipv6_address: "2001:11:11:11::10"
+    volumes:
+      - ${PWD}/frr_configs/as1000:/etc/frr/frr.conf:ro
+      - ./cap/as1000:/cap
+    sysctls:
+      net.ipv6.conf.all.forwarding: 1
+
+  rtr2:
+    hostname: rtr2
+    build: normal/
+    privileged: true
+    container_name: as2000
+    networks:
+      net1:
+        ipv6_address: "2001:11:11:11::20"
+      net2:
+        ipv6_address: "2001:12:12:12::20" 
+    volumes:
+      - ${PWD}/frr_configs/as2000:/etc/frr/frr.conf:ro
+      - ./cap/as2000:/cap
+    sysctls:
+      net.ipv6.conf.all.forwarding: 1
+
+  rtr3:
+    hostname: rtr3
+    build: normal/
+    privileged: true
+    container_name: as3000
+    networks:
+      net2:
+        ipv6_address: "2001:12:12:12::30" 
+    volumes:
+      - ${PWD}/frr_configs/as3000:/etc/frr/frr.conf:ro
+      - ./cap/as3000:/cap
+    sysctls:
+      net.ipv6.conf.all.forwarding: 1
+      
+  verify:
+    hostname: verify
+    build: verify/
+    volumes:
+      - ./cap/:/cap
+
+networks:
+  net1:
+    internal: true
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: "2001:11:11:11::/64"
+  net2:
+    internal: true
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: "2001:12:12:12::/64"
+  

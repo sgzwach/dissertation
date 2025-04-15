@@ -1,0 +1,95 @@
+--- ebpf-ipv6-exthdr-injection/tc_ipv6_eh_kern.c	2025-04-15 14:49:39.020189217 -0500
++++ tc_ipv6_eh_kern.c	2025-04-15 14:51:37.243150713 -0500
+@@ -4,16 +4,17 @@
+ #include "tc_ipv6_eh.h"
+ 
+ #define ETH_P_IPV6		0x86DD
+-#define ICMPV6_ECHO_REQUEST	128
++// #define ICMPV6_ECHO_REQUEST	128
+ #define NEXTHDR_TCP		6
+-#define NEXTHDR_UDP		17
+-#define NEXTHDR_ICMP		58
++// #define NEXTHDR_UDP		17
++// #define NEXTHDR_ICMP		58
++#define NEXTHDR_BGP
+ 
+ #define TC_ACT_OK		0
+ #define TC_ACT_SHOT		2
+ 
+-#define UDP_DPORT		443
+-#define TCP_DPORT		443
++// #define UDP_DPORT		443
++#define TCP_DPORT		179
+ 
+ struct {
+ 	__uint(type, BPF_MAP_TYPE_ARRAY);
+@@ -45,6 +46,7 @@
+ 	struct icmp6hdr *icmp6;
+ 	struct tcphdr *tcp;
+ 	struct udphdr *udp;
++	struct bgphdr *bgp;
+ 
+ 	switch(ipv6_nxthdr)
+ 	{
+@@ -53,26 +55,9 @@
+ 			return 0;
+ 
+ 		tcp = data + offset;
+-		if (tcp->syn && bpf_ntohs(tcp->dest) == TCP_DPORT)
+-			return 1;
+-		break;
+-
+-	case NEXTHDR_UDP:
+-		if (data + offset + sizeof(*udp) > data_end)
+-			return 0;
+-
+-		udp = data + offset;
+-		if (bpf_ntohs(udp->dest) == UDP_DPORT)
+-			return 1;
+-		break;
+-
+-	case NEXTHDR_ICMP:
+-		if (data + offset + sizeof(*icmp6) > data_end)
+-			return 0;
+-
+-		icmp6 = data + offset;
+-		if (icmp6->icmp6_type == ICMPV6_ECHO_REQUEST)
+-			return 1;
++		if (/*tcp->syn && */ bpf_ntohs(tcp->source) == 179) { // only grab outbound BGP
++				return 1; 
++		}
+ 		break;
+ 
+ 	default:
+@@ -117,8 +102,12 @@
+ 
+ 	/* Custom filter applied per packet.
+ 	 */
+-	//if (!pass_custom_filter(skb, ip6->nexthdr, off))
+-	//	return TC_ACT_OK;
++	if (!pass_custom_filter(skb, ip6->nexthdr, off))
++		return TC_ACT_OK;
++
++	/* Determine if it's an UPDATE and has NLRI - NOTE: we only account for single (or first) NLRI at this time*/
++	/* If we are here, we know it is TCP on source port 179, thus we can skip the TCP header */
++
+ 
+ 	/* Retrieve the map element we need.
+ 	 */
+@@ -141,7 +130,8 @@
+ 		return TC_ACT_OK;
+ 	}
+ 
+-	off_last_nexthdr = exthdr->off_last_nexthdr;
++	// off_last_nexthdr = exthdr->off_last_nexthdr;
++	off_last_nexthdr = 0;
+ 
+ 	ip6nexthdr = ip6->nexthdr;
+ 	ip6->nexthdr = exthdr->ip6nexthdr;
+@@ -166,4 +156,4 @@
+ 		return TC_ACT_SHOT;
+ 
+ 	return TC_ACT_OK;
+-}
++}
+\ No newline at end of file

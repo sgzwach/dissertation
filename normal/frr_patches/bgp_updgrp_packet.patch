@@ -1,0 +1,34 @@
+--- frr/bgpd/bgp_updgrp_packet.c	2025-04-15 11:10:56.081835919 -0500
++++ bgp_updgrp_packet.c	2025-04-15 11:13:21.425532147 -0500
+@@ -689,6 +689,9 @@
+ 	addpath_overhead = addpath_capable ? BGP_ADDPATH_ID_LEN : 0;
+ 
+ 	adv = bgp_adv_fifo_first(&subgrp->sync->update);
++	/* SGZ Prepare to advertise */
++	char timingPrefix[PREFIX2STR_BUFFER];
++	/* SGZ END Prepare to advertise*/
+ 	while (adv) {
+ 		const struct prefix *dest_p;
+ 
+@@ -698,7 +701,10 @@
+ 		adj = adv->adj;
+ 		addpath_tx_id = adj->addpath_tx_id;
+ 		path = adv->pathi;
+-
++		/* SGZ Document appended NLRI */
++		prefix2str(dest_p, timingPrefix, sizeof(timingPrefix));
++		writeTime("Adding NLRI to Update", timingPrefix);
++		/* SGZ END appended NLRI*/
+ 		space_remaining = STREAM_CONCAT_REMAIN(s, snlri, STREAM_SIZE(s))
+ 				  - BGP_MAX_PACKET_SIZE_OVERFLOW;
+ 		space_needed =
+@@ -904,6 +910,9 @@
+ 				 - stream_get_getp(packet)),
+ 				peer->max_packet_size, num_pfx);
+ 		pkt = bpacket_queue_add(SUBGRP_PKTQ(subgrp), packet, &vecarr);
++		/* SGZ write time for queueing message */
++		writeTime("Wrote Update to queue", timingPrefix);
++		/* SGZ END write for queueing message*/
+ 		stream_reset(s);
+ 		stream_reset(snlri);
+ 		return pkt;

@@ -1,0 +1,56 @@
+--- frr/bgpd/bgp_route.c	2025-04-15 11:10:56.077835817 -0500
++++ bgp_route.c	2025-04-15 10:38:54.896578099 -0500
+@@ -4565,6 +4565,10 @@
+ 		frrtrace(6, frr_bgp, process_update, peer, pfxprint, addpath_id,
+ 			 afi, safi, attr);
+ 	}
++	/* Testing more timing */
++	char pfxtime[PREFIX2STR_BUFFER];
++	prefix2str(p, pfxtime, sizeof(pfxtime));
++	/* end testing timing*/
+ 
+ #ifdef ENABLE_BGP_VNC
+ 	int vnc_implicit_withdraw = 0;
+@@ -5527,6 +5531,12 @@
+ 	/* Unlock bgp_node_get() lock. */
+ 	bgp_dest_unlock_node(dest);
+ 
++	/* Testing more timing */
++	// char pfxtime[PREFIX2STR_BUFFER];
++	// prefix2str(p, pfxtime, sizeof(pfxtime));
++	// writeTime("bgp_update function end", pfxtime);
++	/* end testing timing*/
++
+ 	return;
+ }
+ 
+@@ -5681,7 +5691,7 @@
+ 	else
+ 		memset(&evpn, 0, sizeof(evpn));
+ 
+-	bgp_update(peer, bgp_dest_get_prefix(dest), ain->addpath_rx_id,
++		bgp_update(peer, bgp_dest_get_prefix(dest), ain->addpath_rx_id,
+ 		   ain->attr, afi, safi, ZEBRA_ROUTE_BGP, BGP_ROUTE_NORMAL, prd,
+ 		   label_pnt, num_labels, 1, &evpn);
+ }
+@@ -6595,10 +6605,19 @@
+ 		}
+ 
+ 		/* Normal process. */
+-		if (attr)
++		if (attr) {
++			/* SGZ Parse and Print NLRI */
++			char timingPrefix[PREFIX2STR_BUFFER];
++			prefix2str(&p, timingPrefix, sizeof(timingPrefix));
++			writeTime("Update received with NLRI", timingPrefix);
++			/* SGZ End Parse and Print NLRI */
+ 			bgp_update(peer, &p, addpath_id, attr, afi, safi,
+ 				   ZEBRA_ROUTE_BGP, BGP_ROUTE_NORMAL, NULL,
+ 				   NULL, 0, 0, NULL);
++			/* SGZ Mark Update Completed */
++			writeTime("Update completed with NLRI", timingPrefix);
++			/* SGZ End Mark Update Completed */
++		}
+ 		else
+ 			bgp_withdraw(peer, &p, addpath_id, afi, safi,
+ 				     ZEBRA_ROUTE_BGP, BGP_ROUTE_NORMAL, NULL,
